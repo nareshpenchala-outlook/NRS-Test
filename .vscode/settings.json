@@ -1,0 +1,5 @@
+{
+    "appService.preDeployTask": "publish-release",
+    "appService.deploySubpath": "bin/Release/net10.0/publish",
+    "appService.defaultWebAppToDeploy": "/subscriptions/f7c7c5e9-4339-495e-b8e3-d07744fa60c2/resourceGroups/NRS-Test/providers/Microsoft.Web/sites/NRS-APP-TEST"
+}

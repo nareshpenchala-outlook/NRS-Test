@@ -1,0 +1,4 @@
+@baseUrl = http://localhost:5080
+
+### Get the sample mock response
+GET {{baseUrl}}/api/sample
