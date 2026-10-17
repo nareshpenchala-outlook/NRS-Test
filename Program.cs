@@ -4,13 +4,26 @@ using Microsoft.ApplicationInsights.AspNetCore.Extensions;
 var builder = WebApplication.CreateBuilder(args);
 builder.Services.AddApplicationInsightsTelemetry();
 builder.Services.AddControllers();
+builder.Services.AddOpenApi();
 
 var app = builder.Build();
 var startupLogger = app.Logger;
 startupLogger.LogInformation("SRE demo service starting with {EnvironmentName}", app.Environment.EnvironmentName);
 
-app.MapGet("/health/live", () => Results.Ok(new { status = "healthy" }));
-app.MapGet("/health/ready", () => Results.Ok(new { status = "ready" }));
+if (app.Environment.IsDevelopment())
+{
+    app.MapOpenApi();
+    app.UseSwaggerUi(settings => settings.DocumentPath = "/openapi/v1.json");
+}
+
+app.MapGet("/health/live", () => Results.Ok(new { status = "healthy" }))
+    .WithName("GetLiveHealth")
+    .WithSummary("Check liveness")
+    .WithDescription("Returns healthy when the application process is running.");
+app.MapGet("/health/ready", () => Results.Ok(new { status = "ready" }))
+    .WithName("GetReadyHealth")
+    .WithSummary("Check readiness")
+    .WithDescription("Returns ready when the application can accept requests.");
 
 app.MapGet("/demo/{scenario}", (string scenario, HttpContext context, ILogger<Program> logger) =>
 {
@@ -48,7 +61,10 @@ app.MapGet("/demo/{scenario}", (string scenario, HttpContext context, ILogger<Pr
                 return Results.NotFound(new { error = "Use info, warning, or error.", traceId });
         }
     }
-});
+})
+    .WithName("RunDiagnosticScenario")
+    .WithSummary("Run a diagnostic scenario")
+    .WithDescription("Emits telemetry for the info, warning, or error scenario; unknown scenarios return 404.");
 
 app.MapControllers();
 

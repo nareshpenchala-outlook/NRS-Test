@@ -17,6 +17,8 @@ dotnet run --urls http://localhost:5080
 
 With the dummy value, the API still runs and logs to the console, but telemetry is not sent to a real Application Insights resource. Requests are sent to Application Insights when a valid connection string is configured. Allow a few minutes for telemetry ingestion.
 
+In the Development environment, open [http://localhost:5080/swagger](http://localhost:5080/swagger) for the interactive Swagger UI or [http://localhost:5080/openapi/v1.json](http://localhost:5080/openapi/v1.json) for the OpenAPI document. The documentation endpoints are disabled outside Development.
+
 ## Exercise the service
 
 ```sh
