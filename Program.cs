@@ -1,4 +1,5 @@
 using System.Diagnostics;
+using System.Net;
 using Microsoft.ApplicationInsights.AspNetCore.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -10,10 +11,48 @@ var app = builder.Build();
 var startupLogger = app.Logger;
 startupLogger.LogInformation("SRE demo service starting with {EnvironmentName}", app.Environment.EnvironmentName);
 
+// Global exception handler to prevent stack-trace leakage and ensure
+// unhandled exceptions are logged to Application Insights.
+if (!app.Environment.IsDevelopment())
+{
+    app.UseExceptionHandler(errorApp =>
+    {
+        errorApp.Run(async context =>
+        {
+            var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+            var exceptionFeature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+            if (exceptionFeature is not null)
+            {
+                logger.LogError(exceptionFeature.Error,
+                    "Unhandled exception on {Method} {Path}",
+                    context.Request.Method, context.Request.Path);
+            }
+
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            context.Response.ContentType = "application/json";
+            var traceId = Activity.Current?.TraceId.ToString() ?? context.TraceIdentifier;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                title = "An unexpected error occurred.",
+                status = 500,
+                traceId
+            });
+        });
+    });
+}
+
 if (app.Environment.IsDevelopment())
 {
     app.MapOpenApi();
     app.UseSwaggerUi(settings => settings.DocumentPath = "/openapi/v1.json");
+}
+else
+{
+    // Return a friendly JSON response instead of 404 when swagger is
+    // requested in non-Development environments.
+    app.Map("/swagger/{**rest}", () => Results.Json(
+        new { message = "Swagger UI is only available in the Development environment." },
+        statusCode: StatusCodes.Status404NotFound));
 }
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "healthy" }))
@@ -65,6 +104,17 @@ app.MapGet("/demo/{scenario}", (string scenario, HttpContext context, ILogger<Pr
     .WithName("RunDiagnosticScenario")
     .WithSummary("Run a diagnostic scenario")
     .WithDescription("Emits telemetry for the info, warning, or error scenario; unknown scenarios return 404.");
+
+// Root URL handler so that GET / returns service metadata instead of 404.
+app.MapGet("/", () => Results.Ok(new
+    {
+        service = "SreAgentDemo",
+        status = "running",
+        docs = "/health/live"
+    }))
+    .WithName("GetRoot")
+    .WithSummary("Service info")
+    .WithDescription("Returns basic service metadata and a link to the health endpoint.");
 
 app.MapControllers();
 
