@@ -10,11 +10,41 @@ var app = builder.Build();
 var startupLogger = app.Logger;
 startupLogger.LogInformation("SRE demo service starting with {EnvironmentName}", app.Environment.EnvironmentName);
 
-if (app.Environment.IsDevelopment())
+// Global exception handler to prevent stack-trace leakage and ensure
+// unhandled exceptions are logged to Application Insights.
+if (!app.Environment.IsDevelopment())
 {
-    app.MapOpenApi();
-    app.UseSwaggerUi(settings => settings.DocumentPath = "/openapi/v1.json");
+    app.UseExceptionHandler(errorApp =>
+    {
+        errorApp.Run(async context =>
+        {
+            var logger = context.RequestServices.GetRequiredService<ILogger<Program>>();
+            var exceptionFeature = context.Features.Get<Microsoft.AspNetCore.Diagnostics.IExceptionHandlerFeature>();
+            if (exceptionFeature is not null)
+            {
+                logger.LogError(exceptionFeature.Error,
+                    "Unhandled exception on {Method} {Path}",
+                    context.Request.Method, context.Request.Path);
+            }
+
+            context.Response.StatusCode = StatusCodes.Status500InternalServerError;
+            context.Response.ContentType = "application/json";
+            var traceId = Activity.Current?.TraceId.ToString() ?? context.TraceIdentifier;
+            await context.Response.WriteAsJsonAsync(new
+            {
+                title = "An unexpected error occurred.",
+                status = 500,
+                traceId
+            });
+        });
+    });
 }
+
+// Swagger UI is enabled in all environments since this is a demo/test service.
+// This eliminates HTTP 404 failures tracked in App Insights when users or tools
+// navigate to /swagger in production.
+app.MapOpenApi();
+app.UseSwaggerUi(settings => settings.DocumentPath = "/openapi/v1.json");
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "healthy" }))
     .WithName("GetLiveHealth")
@@ -65,6 +95,12 @@ app.MapGet("/demo/{scenario}", (string scenario, HttpContext context, ILogger<Pr
     .WithName("RunDiagnosticScenario")
     .WithSummary("Run a diagnostic scenario")
     .WithDescription("Emits telemetry for the info, warning, or error scenario; unknown scenarios return 404.");
+
+// Root URL handler – redirect to Swagger UI so that GET / no longer returns 404.
+app.MapGet("/", () => Results.Redirect("/swagger"))
+    .WithName("GetRoot")
+    .WithSummary("Root redirect")
+    .WithDescription("Redirects to the Swagger UI for interactive API exploration.");
 
 app.MapControllers();
 
