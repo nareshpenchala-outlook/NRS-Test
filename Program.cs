@@ -1,5 +1,4 @@
 using System.Diagnostics;
-using System.Net;
 using Microsoft.ApplicationInsights.AspNetCore.Extensions;
 
 var builder = WebApplication.CreateBuilder(args);
@@ -41,19 +40,11 @@ if (!app.Environment.IsDevelopment())
     });
 }
 
-if (app.Environment.IsDevelopment())
-{
-    app.MapOpenApi();
-    app.UseSwaggerUi(settings => settings.DocumentPath = "/openapi/v1.json");
-}
-else
-{
-    // Return a friendly JSON response instead of 404 when swagger is
-    // requested in non-Development environments.
-    app.Map("/swagger/{**rest}", () => Results.Json(
-        new { message = "Swagger UI is only available in the Development environment." },
-        statusCode: StatusCodes.Status404NotFound));
-}
+// Swagger UI is enabled in all environments since this is a demo/test service.
+// This eliminates HTTP 404 failures tracked in App Insights when users or tools
+// navigate to /swagger in production.
+app.MapOpenApi();
+app.UseSwaggerUi(settings => settings.DocumentPath = "/openapi/v1.json");
 
 app.MapGet("/health/live", () => Results.Ok(new { status = "healthy" }))
     .WithName("GetLiveHealth")
@@ -105,16 +96,11 @@ app.MapGet("/demo/{scenario}", (string scenario, HttpContext context, ILogger<Pr
     .WithSummary("Run a diagnostic scenario")
     .WithDescription("Emits telemetry for the info, warning, or error scenario; unknown scenarios return 404.");
 
-// Root URL handler so that GET / returns service metadata instead of 404.
-app.MapGet("/", () => Results.Ok(new
-    {
-        service = "SreAgentDemo",
-        status = "running",
-        docs = "/health/live"
-    }))
+// Root URL handler – redirect to Swagger UI so that GET / no longer returns 404.
+app.MapGet("/", () => Results.Redirect("/swagger"))
     .WithName("GetRoot")
-    .WithSummary("Service info")
-    .WithDescription("Returns basic service metadata and a link to the health endpoint.");
+    .WithSummary("Root redirect")
+    .WithDescription("Redirects to the Swagger UI for interactive API exploration.");
 
 app.MapControllers();
 
